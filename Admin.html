@@ -46,13 +46,15 @@
     <h2>Setup</h2>
     <form id="teamForm">
       <div class="row">
-        <div><label>Team name</label><input id="teamName" required placeholder="Team name" /></div>
-        <div><label>Budget</label><input id="teamBudget" type="number" min="0" required placeholder="1000" /></div>
+        <div><label>Team name</label><input id="teamName" required placeholder="Team name" style="width:350px;"/></div>
+        <div><label>Budget</label><input id="teamBudget" type="number" min="0" required placeholder="700" style="width:150px;"/></div>
+		<div><label>Captain</label><input id="captainName" required placeholder="Captain name" style="width:350px;"/></div>
+		<div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Add team + captain</button></div>
+		<div></div>
       </div>
       <div class="row">
-        <div><label>Captain</label><input id="captainName" required placeholder="Captain name" /></div>
+        
         <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
-          <button class="btn" type="submit">Add team + captain</button>
           <button class="btn secondary" type="button" id="seedTeams">Seed Teams (prompts)</button>
           <button class="btn secondary" type="button" id="seedPlayers">Seed Players</button>
         </div>
@@ -82,19 +84,6 @@
         </div>
       </div>
     </div>
-
-    <h3 style="margin-top:14px">Add extra players (Name[,Base])</h3>
-    <form id="playerForm">
-      <div class="row">
-        <div><input id="playerName" placeholder="Player name" /></div>
-        <div><input id="playerBase" type="number" min="0" placeholder="Base points" /></div>
-      </div>
-      <button class="btn" type="submit">Add player</button>
-    </form>
-    <form id="bulkPlayersForm" style="margin-top:8px">
-      <textarea id="bulkPlayers" placeholder="Name,Base&#10;Name,Base" rows="5"></textarea>
-      <div style="margin-top:6px"><button class="btn secondary" type="submit">Bulk add</button></div>
-    </form>
 
     <h2 style="margin-top:16px">Auction Board</h2>
     <div class="card" style="padding:10px;background:#fbfcff">
@@ -131,7 +120,20 @@
         </div>
       </form>
     </div>
-
+	
+	<h3 style="margin-top:14px">Add extra players (Name[,Base])</h3>
+    <form id="playerForm">
+      <div class="row">
+        <div><input id="playerName" placeholder="Player name" /></div>
+        <div><input id="playerBase" type="number" min="0" placeholder="Base points" /></div>
+      </div>
+      <button class="btn" type="submit">Add player</button>
+    </form>
+    <form id="bulkPlayersForm" style="margin-top:8px">
+      <textarea id="bulkPlayers" placeholder="Name,Base&#10;Name,Base" rows="5"></textarea>
+      <div style="margin-top:6px"><button class="btn secondary" type="submit">Bulk add</button></div>
+    </form>
+	
     <div class="card">
       <h3>Data</h3>
       <button class="btn secondary" id="exportJson">Export JSON</button>
