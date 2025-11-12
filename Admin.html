@@ -1,0 +1,666 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Volleyball Auction — Admin</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Inter,Arial;margin:0;background:#f6f7fb;color:#111}
+  header{background:#111827;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10}
+  h1{margin:0;font-size:18px}
+  .wrap{max-width:1200px;margin:14px auto;padding:0 12px}
+  .card{background:#fff;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.08);padding:14px;margin:10px 0}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  input,select,textarea{width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa}
+  .btn{border:0;border-radius:8px;padding:10px 14px;background:#111827;color:#fff;font-weight:600;cursor:pointer}
+  .btn.secondary{background:#e5e7eb;color:#111}
+  .btn.warn{background:#b91c1c}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+  .right{text-align:right}.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,Consolas,monospace}
+  .pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;background:#eef2ff;color:#3730a3}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){.grid{grid-template-columns:1.1fr 1fr}}
+  .teams-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:900px){.teams-grid{grid-template-columns:repeat(3,1fr)}}
+  .team-card{border:1px solid #eef0f4;border-radius:10px;padding:10px}
+  .team-card h4{margin:0 0 6px;font-size:14px;display:flex;justify-content:space-between}
+  .roster{list-style:none;margin:0;padding:0}
+  .roster li{background:#fafafa;border-radius:8px;padding:6px 8px;margin:6px 0;display:flex;justify-content:space-between;gap:8px}
+  .tag{font-size:11px;padding:2px 6px;border-radius:999px;background:#eaeefc;color:#3036a3}
+  .cap{background:#e8faf2;color:#0e6f47}
+  .onblock{font-weight:700;font-size:20px}
+  .hint{color:#666;font-size:12px}
+  .player-name-input:focus, .player-base-input:focus {
+  outline: 1px solid #2563eb;
+  background: #eef2ff !important;
+  color: #111;}
+
+</style>
+</head>
+<body>
+<header><h1>Volleyball Auction — Admin (live)</h1></header>
+<div class="wrap grid">
+  <div class="card">
+    <h2>Setup</h2>
+    <form id="teamForm">
+      <div class="row">
+        <div><label>Team name</label><input id="teamName" required placeholder="Team name" /></div>
+        <div><label>Budget</label><input id="teamBudget" type="number" min="0" required placeholder="1000" /></div>
+      </div>
+      <div class="row">
+        <div><label>Captain</label><input id="captainName" required placeholder="Captain name" /></div>
+        <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <button class="btn" type="submit">Add team + captain</button>
+          <button class="btn secondary" type="button" id="seedTeams">Seed Teams (prompts)</button>
+          <button class="btn secondary" type="button" id="seedPlayers">Seed Players</button>
+        </div>
+      </div>
+      <div class="hint">Limit 6 teams. Captain is auto-assigned at price 0 and occupies 1/6 roster slots.</div>
+    </form>
+
+    <!-- Global auction controls -->
+    <div class="card" style="margin-top:10px">
+      <h3>Auction Controls</h3>
+      <div class="row">
+        <div>
+          <label>Set same budget for ALL teams</label>
+          <div style="display:flex;gap:8px">
+            <input id="globalBudget" type="number" min="0" placeholder="e.g., 1000" />
+            <button class="btn secondary" type="button" id="applyBudgetAll">Apply</button>
+          </div>
+          <div class="hint">Updates the Budget field of every existing team.</div>
+        </div>
+        <div>
+          <label>Start / Reset</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn" type="button" id="startAuction">Start auction</button>
+            <button class="btn secondary" type="button" id="resetAuction">Reset auction</button>
+          </div>
+          <div id="auctionStatus" class="hint">Auction not started</div>
+        </div>
+		<div class="card">
+		  <h3>Captain Links</h3>
+		  <div class="hint">Share each unique link with the matching captain. Opening the link locks the phone to that team.</div>
+		  <div id="linksList" style="margin-top:8px"></div>
+		</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:14px">Add extra players (Name[,Base])</h3>
+    <form id="playerForm">
+      <div class="row">
+        <div><input id="playerName" placeholder="Player name" /></div>
+        <div><input id="playerBase" type="number" min="0" placeholder="Base points" /></div>
+      </div>
+      <button class="btn" type="submit">Add player</button>
+    </form>
+    <form id="bulkPlayersForm" style="margin-top:8px">
+      <textarea id="bulkPlayers" placeholder="Name,Base&#10;Name,Base" rows="5"></textarea>
+      <div style="margin-top:6px"><button class="btn secondary" type="submit">Bulk add</button></div>
+    </form>
+
+    <h2 style="margin-top:16px">Auction Board</h2>
+    <div class="card" style="padding:10px;background:#fbfcff">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div>
+          <div>On the block:</div>
+          <div id="onBlock" class="onblock">—</div>
+          <div id="onBlockBase" class="hint">Base: —</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn secondary" id="drawRandom">Draw random</button>
+          <button class="btn secondary" id="skipPlayer">Skip</button>
+          <button class="btn secondary" id="undoLast">Undo last pick</button>
+          <button class="btn warn" id="resetBids">Clear bids</button>
+        </div>
+      </div>
+
+      <div id="bidList" style="margin-top:10px"></div>
+
+      <form id="sellForm" style="margin-top:8px">
+        <div class="row">
+          <div>
+            <label>Sell to team</label>
+            <select id="sellTeam"></select>
+          </div>
+          <div>
+            <label>Price (≥ base)</label>
+            <input id="sellPrice" type="number" min="0" step="1" />
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <button class="btn" type="submit">Mark as SOLD</button>
+          <div id="sellHint" class="hint"></div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Data</h3>
+      <button class="btn secondary" id="exportJson">Export JSON</button>
+      <button class="btn warn" id="wipeAll">Wipe ALL (careful)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Teams & Budgets</h2>
+      <div class="hint">6 players max (incl. captain)</div>
+    </div>
+    <table id="teamsTable">
+      <thead><tr><th>Team</th><th class="right">Budget</th><th class="right">Spent</th><th class="right">Remaining</th><th class="right">Roster</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="card">
+      <h3>Roster Board</h3>
+      <div id="rosterGrid" class="teams-grid"></div>
+    </div>
+
+    <div class="card">
+      <h3>Picks</h3>
+      <table id="picksTable">
+        <thead><tr><th>Time</th><th>Team</th><th>Player</th><th class="right">Price</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Unassigned players</h3>
+      <table id="playersTable">
+        <thead><tr><th>Player</th><th class="right">Base</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+/*** 1) Firebase init ***/
+const firebaseConfig = /* TODO: paste your Firebase config here */ {
+  apiKey: "AIzaSyDE5edXDB9w84NcL8Fda3f8onf3CQbCHkA",
+  authDomain: "mylearning-bk.firebaseapp.com",
+  databaseURL: "https://mylearning-bk-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "mylearning-bk",
+  storageBucket: "mylearning-bk.firebasestorage.app",
+  messagingSenderId: "970255821782",
+  appId: "1:970255821782:web:5abe761ac13159043cd277"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/*** 2) Refs ***/
+const refTeams   = db.ref('teams');
+const refPlayers = db.ref('players');
+const refPicks   = db.ref('picks');
+const refState   = db.ref('state');
+const refBids    = db.ref('bids');
+
+/*** 3) Helpers ***/
+const ROSTER_SIZE = 6;
+const fmt = new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
+const fmtTime = (ts)=>new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+const uid = (p='id') => p+'_'+Math.random().toString(36).slice(2,10);
+const el = id => document.getElementById(id);
+
+function computeSpent(picks, teamId){
+  return Object.values(picks||{}).filter(p=>p.teamId===teamId)
+    .reduce((a,p)=>a+(p.isCaptain?0:(+p.price||0)),0);
+}
+function teamCount(picks, teamId){
+  return Object.values(picks||{}).filter(p=>p.teamId===teamId).length;
+}
+function playerAssigned(players, picks, playerId){
+  if(players?.[playerId]?.assignedTeamId) return true;
+  return Object.values(picks||{}).some(p=>p.playerId===playerId);
+}
+
+/*** Reserve rule: sum the cheapest bases among unassigned (excluding on-block) ***/
+function unassignedPlayersList(excludeId){
+  return Object.values(PLAYERS || {}).filter(pl => {
+    if (excludeId && pl.id === excludeId) return false;
+    const assignedFlag = !!(pl.assignedTeamId && pl.assignedTeamId !== '');
+    const pickedFlag = Object.values(PICKS || {}).some(pk => pk.playerId === pl.id);
+    return !(assignedFlag || pickedFlag);
+  });
+}
+function requiredReserveForTeam(teamId, excludePlayerId){
+  const slotsLeftNow   = ROSTER_SIZE - teamCount(PICKS, teamId);
+  const slotsLeftAfter = Math.max(0, slotsLeftNow - 1);
+  if (slotsLeftAfter === 0) return 0;
+  const bases = unassignedPlayersList(excludePlayerId)
+    .map(p => +p.base || 0)
+    .sort((a,b)=>a-b);
+  let reserve = 0;
+  for (let i = 0; i < Math.min(slotsLeftAfter, bases.length); i++) reserve += bases[i];
+  return reserve;
+}
+function maxAllowedBidForTeam(teamId, currentPlayerId){
+  const t = TEAMS[teamId]; if (!t) return 0;
+  const spent = computeSpent(PICKS, teamId);
+  const remaining = Math.max(0, (+t.budget || 0) - spent);
+  const reserve   = requiredReserveForTeam(teamId, currentPlayerId);
+  return Math.max(0, remaining - reserve);
+}
+
+/*** 4) Live caches ***/
+let TEAMS={}, PLAYERS={}, PICKS={}, STATE={onBlockPlayerId:null, skipped:[], started:false, startedAt:null};
+
+refTeams.on('value', s=>{TEAMS=s.val()||{}; renderAll();});
+refPlayers.on('value', s=>{PLAYERS=s.val()||{}; renderAll();});
+refPicks.on('value', s=>{PICKS=s.val()||{}; renderAll();});
+refState.on('value', s=>{
+  STATE = Object.assign({onBlockPlayerId:null, skipped:[], started:false, startedAt:null}, s.val()||{});
+  renderAll();
+  const st = document.getElementById('auctionStatus');
+  if (st) st.textContent = STATE.started ? `Auction started at ${STATE.startedAt ? new Date(STATE.startedAt).toLocaleTimeString() : ''}` : 'Auction not started';
+});
+refBids.on('value', ()=>{ renderBids(); });
+
+/*** 5) Rendering ***/
+function renderAll(){
+  renderOnBlock(); renderTeamsTable(); renderRoster(); renderPicks(); renderPlayers(); refreshSellForm(); renderBids();renderCaptainLinks(); 
+}
+function renderOnBlock(){
+  const p = PLAYERS[STATE.onBlockPlayerId];
+  el('onBlock').textContent = p ? p.name : '—';
+  el('onBlockBase').textContent = p ? `Base: ${fmt.format(p.base||0)}` : 'Base: —';
+}
+function renderTeamsTable(){
+  const tbody = el('teamsTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  const teams = Object.values(TEAMS||{}).sort((a,b)=>a.name.localeCompare(b.name));
+  for(const t of teams){
+    const spent = computeSpent(PICKS, t.id);
+    const remaining = Math.max(0, (+t.budget||0)-spent);
+    const count = teamCount(PICKS, t.id);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${t.name}</strong></td>
+      <td class="right mono">${fmt.format(t.budget||0)}</td>
+      <td class="right mono">${fmt.format(spent)}</td>
+      <td class="right mono"><span class="pill">${fmt.format(remaining)}</span></td>
+      <td class="right mono">${count}/${ROSTER_SIZE}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+function renderRoster(){
+  const wrap = el('rosterGrid'); wrap.innerHTML = '';
+  const teams = Object.values(TEAMS||{}).sort((a,b)=>a.name.localeCompare(b.name));
+  for(const t of teams){
+    const card = document.createElement('div');
+    card.className = 'team-card';
+    const spent = computeSpent(PICKS, t.id);
+    const rem = Math.max(0, (+t.budget||0)-spent);
+    const picks = Object.values(PICKS||{}).filter(p=>p.teamId===t.id)
+      .sort((a,b)=>Number(b.isCaptain)-Number(a.isCaptain)||a.ts-b.ts);
+    card.innerHTML = `<h4><span>${t.name}</span><span class="pill mono">${fmt.format(rem)} left</span></h4><ul class="roster"></ul>`;
+    const ul = card.querySelector('.roster');
+    for(const p of picks){
+      const pl = PLAYERS[p.playerId]||{};
+      const li = document.createElement('li');
+      li.innerHTML = `<span>${pl.name||'?'} ${p.isCaptain?'<span class="tag cap">Captain</span>':''}</span>
+                      <span class="mono">${p.isCaptain?'—':fmt.format(p.price)}</span>`;
+      ul.appendChild(li);
+    }
+    const remainingSlots = ROSTER_SIZE - picks.length;
+    for(let i=0;i<remainingSlots;i++){
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="hint">Empty slot</span><span class="hint">—</span>`;
+      ul.appendChild(li);
+    }
+    wrap.appendChild(card);
+  }
+}
+function captainBaseUrl(){
+  // Build a URL to captain.html next to admin.html
+  const url = new URL(window.location.href);
+  const parts = url.pathname.split('/');
+  parts[parts.length - 1] = 'captain.html';
+  url.pathname = parts.join('/');
+  url.search = ''; url.hash = '';
+  return url.toString();
+}
+function renderPicks(){
+  const tbody = el('picksTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  const arr = Object.values(PICKS||{}).sort((a,b)=>a.ts-b.ts);
+  for(const p of arr){
+    const t = TEAMS[p.teamId], pl = PLAYERS[p.playerId];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="mono">${fmtTime(p.ts)}</td>
+      <td>${t?.name||'?'}</td>
+      <td>${pl?.name||'?'} ${p.isCaptain?'<span class="tag cap">Captain</span>':''}</td>
+      <td class="right mono">${p.isCaptain?'—':fmt.format(p.price)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+function renderCaptainLinks(){
+  const wrap = document.getElementById('linksList');
+  if(!wrap) return;
+  const base = captainBaseUrl();
+  const teams = Object.values(TEAMS||{}).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!teams.length){ wrap.innerHTML = '<div class="hint">Add teams to generate links.</div>'; return; }
+  const list = document.createElement('div');
+  teams.forEach(t=>{
+    const link = `${base}?team=${encodeURIComponent(t.id)}`;
+    const row = document.createElement('div');
+    row.style.margin = '6px 0';
+    row.innerHTML = `
+      <div><strong>${t.name}</strong></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <a href="${link}" target="_blank" class="mono" style="word-break:break-all">${link}</a>
+        <button class="btn secondary" data-copy="${link}" style="padding:6px 10px">Copy</button>
+      </div>`;
+    list.appendChild(row);
+  });
+  wrap.innerHTML = ''; wrap.appendChild(list);
+
+  // Copy buttons
+  wrap.querySelectorAll('button[data-copy]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const txt = btn.getAttribute('data-copy');
+      navigator.clipboard.writeText(txt).then(()=>{ btn.textContent='Copied!'; setTimeout(()=>btn.textContent='Copy',1200);});
+    });
+  });
+}
+
+function renderPlayers(){
+  const tbody = el('playersTable').querySelector('tbody');
+  tbody.innerHTML = '';
+
+  const unassigned = Object.values(PLAYERS||{})
+    .filter(pl => !playerAssigned(PLAYERS, PICKS, pl.id))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+
+  for (const pl of unassigned) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <input type="text" value="${pl.name}" data-id="${pl.id}" class="player-name-input" 
+               style="border:none;background:transparent;width:100%;color:inherit" readonly />
+      </td>
+      <td class="right mono">
+        <input type="number" min="0" value="${pl.base||0}" data-id="${pl.id}" class="player-base-input" 
+               style="border:none;background:transparent;width:60px;color:inherit;text-align:right" readonly />
+      </td>
+      <td style="width:70px;text-align:right">
+        <button class="btn secondary btn-edit" data-id="${pl.id}" style="padding:4px 8px">✏️</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+
+  // Edit/save handlers
+  tbody.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const nameInput = tbody.querySelector(`.player-name-input[data-id="${id}"]`);
+      const baseInput = tbody.querySelector(`.player-base-input[data-id="${id}"]`);
+
+      // If button is in edit mode
+      if (btn.textContent === '✏️') {
+        btn.textContent = '💾';
+        nameInput.removeAttribute('readonly');
+        baseInput.removeAttribute('readonly');
+        nameInput.style.background = '#eef2ff';
+        baseInput.style.background = '#eef2ff';
+        nameInput.focus();
+      } 
+      // If button is in save mode
+      else {
+        const newName = nameInput.value.trim();
+        const newBase = Number(baseInput.value);
+        if (!newName) return alert('Player name cannot be empty.');
+        if (!isFinite(newBase) || newBase < 0) return alert('Base must be a non-negative number.');
+
+        await refPlayers.child(id).update({ name: newName, base: newBase });
+        btn.textContent = '✏️';
+        nameInput.setAttribute('readonly', true);
+        baseInput.setAttribute('readonly', true);
+        nameInput.style.background = 'transparent';
+        baseInput.style.background = 'transparent';
+      }
+    });
+  });
+}
+
+function renderBids(){
+  const div = el('bidList'); div.innerHTML = '';
+  const pid = STATE.onBlockPlayerId; if(!pid){ div.innerHTML='<div class="hint">No player on block.</div>'; return; }
+  refBids.child(pid).once('value').then(s=>{
+    const bids = Object.entries(s.val()||{}).map(([teamId,b])=>({teamId,...b}))
+                  .sort((a,b)=>b.amount-a.amount||a.ts-b.ts);
+    if(!bids.length){ div.innerHTML='<div class="hint">No bids yet.</div>'; return; }
+    const list = document.createElement('div');
+    bids.forEach((b,i)=>{
+      const t = TEAMS[b.teamId]; const top = i===0 ? 'style="font-weight:700"' : '';
+      const row = document.createElement('div');
+      row.innerHTML = `<div ${top}>${t?.name||b.teamId}: <span class="mono">${fmt.format(b.amount)}</span> <span class="hint">(${fmtTime(b.ts)})</span></div>`;
+      list.appendChild(row);
+    });
+    div.appendChild(list);
+  });
+}
+
+/*** 6) Actions ***/
+function refreshSellForm(){
+  const sel = el('sellTeam'); sel.innerHTML='';
+  Object.values(TEAMS||{}).sort((a,b)=>a.name.localeCompare(b.name)).forEach(t=>{
+    const o=document.createElement('option'); o.value=t.id; o.textContent=t.name; sel.appendChild(o);
+  });
+  updateSellHint();
+}
+function updateSellHint(){
+  const teamId = el('sellTeam').value;
+  const t = TEAMS[teamId]; if(!t){ el('sellHint').textContent=''; return; }
+  const spent = computeSpent(PICKS, teamId);
+  const remaining = Math.max(0,(+t.budget||0)-spent);
+  const count = teamCount(PICKS, teamId);
+  const pid = STATE.onBlockPlayerId;
+  const base = pid ? (+PLAYERS[pid]?.base || 0) : 0;
+  const maxBid = maxAllowedBidForTeam(teamId, pid);
+  el('sellHint').textContent =
+    `${t.name}: ${fmt.format(remaining)} left • ${ROSTER_SIZE-count} spot(s)` +
+    (pid ? ` • Base ${fmt.format(base)} • Max bid ${fmt.format(maxBid)}` : '');
+}
+el('sellTeam').addEventListener('change', updateSellHint);
+
+el('drawRandom').addEventListener('click', async ()=>{
+  if (!STATE.started) return alert('Start the auction first.');
+  const unassigned = Object.values(PLAYERS||{}).filter(pl=>!playerAssigned(PLAYERS,PICKS,pl.id));
+  if(!unassigned.length){ await refState.update({onBlockPlayerId:null}); return; }
+  const id = unassigned[Math.floor(Math.random()*unassigned.length)].id;
+  await refState.update({onBlockPlayerId:id});
+});
+el('skipPlayer').addEventListener('click', async ()=>{
+  if (!STATE.started) return alert('Start the auction first.');
+  const cur = STATE.onBlockPlayerId; if(cur){ const skipped = STATE.skipped||[]; skipped.push(cur); await refState.update({onBlockPlayerId:null, skipped}); }
+  el('drawRandom').click();
+});
+el('resetBids').addEventListener('click', async ()=>{
+  const pid = STATE.onBlockPlayerId; if(!pid) return;
+  await refBids.child(pid).remove();
+});
+el('undoLast').addEventListener('click', async ()=>{
+  const arr = Object.values(PICKS||{}).filter(p=>!p.isCaptain).sort((a,b)=>b.ts-a.ts);
+  if(!arr.length) return;
+  const last = arr[0];
+  await refPlayers.child(last.playerId).update({assignedTeamId:null});
+  await refPicks.child(last.id).remove();
+});
+el('sellForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if (!STATE.started) return alert('Start the auction first.');
+  const teamId = el('sellTeam').value;
+  const price = Math.max(0, +el('sellPrice').value||0);
+  const pid = STATE.onBlockPlayerId;
+  if(!pid) return alert('Draw a player first.');
+  const team = TEAMS[teamId], player = PLAYERS[pid];
+  if(!team || !player) return;
+  const base = +player.base||0;
+  if(price < base) return alert(`Bid must be at least base (${fmt.format(base)}).`);
+  const spent = computeSpent(PICKS, teamId);
+  const remaining = (+team.budget||0)-spent;
+  if(price > remaining) return alert(`Not enough points. ${team.name} has ${fmt.format(remaining)} left.`);
+  const count = teamCount(PICKS, teamId);
+  if(count >= ROSTER_SIZE) return alert(`${team.name} already has ${ROSTER_SIZE} players.`);
+  const maxBid = maxAllowedBidForTeam(teamId, pid);
+  if (price > maxBid) return alert(`${team.name} must reserve points for future slots. Max allowed bid is ${fmt.format(maxBid)}.`);
+  // commit
+  const pickId = uid('pick');
+  const ts = Date.now();
+  await refPicks.child(pickId).set({id:pickId, playerId:pid, teamId, price, ts});
+  await refPlayers.child(pid).update({assignedTeamId:teamId});
+  await refState.update({onBlockPlayerId:null});
+  await refBids.child(pid).remove();
+  el('sellPrice').value='';
+  updateSellHint();
+  el('drawRandom').click();
+});
+el('teamForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const teamCountNow = Object.keys(TEAMS||{}).length;
+  if(teamCountNow >= 6) return alert('Limit reached: 6 teams.');
+  const name = el('teamName').value.trim();
+  const budget = Math.max(0, +el('teamBudget').value||0);
+  const captainName = el('captainName').value.trim();
+  if(!name || !captainName) return;
+  const teamId = uid('team');
+  const capId = uid('player');
+  const capPickId = uid('pick');
+  await refTeams.child(teamId).set({id:teamId, name, budget});
+  await refPlayers.child(capId).set({id:capId, name:captainName, base:0, assignedTeamId:teamId});
+  await refPicks.child(capPickId).set({id:capPickId, playerId:capId, teamId, price:0, ts:Date.now(), isCaptain:true});
+  e.target.reset();
+});
+el('playerForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const name = el('playerName').value.trim();
+  const base = Math.max(0, +el('playerBase').value||0);
+  if(!name) return;
+  const id = uid('player');
+  await refPlayers.child(id).set({id,name,base});
+  e.target.reset();
+});
+el('bulkPlayersForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const lines = el('bulkPlayers').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const updates = {};
+  for(const line of lines){
+    const m = line.match(/^(.+?)[,\-]\s*(\d+)$/);
+    const name = m?m[1].trim():line; const base = m?+m[2]:0;
+    const id = uid('player'); updates[id]={id,name,base};
+  }
+  await refPlayers.update(updates);
+  el('bulkPlayers').value='';
+});
+el('exportJson').addEventListener('click', async ()=>{
+  const [teams, players, picks, state, bids] = await Promise.all([refTeams.get(),refPlayers.get(),refPicks.get(),refState.get(),refBids.get()]);
+  const data = {teams:teams.val(), players:players.val(), picks:picks.val(), state:state.val(), bids:bids.val()};
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='auction-backup.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),500);
+});
+el('wipeAll').addEventListener('click', async ()=>{
+  if(!confirm('This will delete ALL data. Continue?')) return;
+  await Promise.all([refTeams.remove(), refPlayers.remove(), refPicks.remove(), refBids.remove(), refState.remove()]);
+});
+
+/*** Seed buttons ***/
+el('seedTeams').addEventListener('click', async ()=>{
+  const names = [
+    "Volley vanguards",
+    "Volleygators",
+    "Spiktakular volleys",
+    "Volleywood stars",
+    "Powerspikers",
+    "Volley Bulls"
+  ];
+  for (const n of names){
+    const teamId = uid('team');
+    const captain = prompt(`Captain for "${n}"? (required)`, "");
+    if(!captain){ alert("Captain required for every team. Seeding stopped."); return; }
+    const budget = Number(prompt(`Budget for "${n}"?`, "1000"))||1000;
+    const capId = uid('player'); const capPickId = uid('pick');
+    await refTeams.child(teamId).set({id:teamId, name:n, budget});
+    await refPlayers.child(capId).set({id:capId, name:captain, base:0, assignedTeamId:teamId});
+    await refPicks.child(capPickId).set({id:capPickId, playerId:capId, teamId, price:0, ts:Date.now(), isCaptain:true});
+  }
+  alert("Teams seeded!");
+});
+
+/*** Players from your list (Kumaran → Vikas Ladkat) ***/
+el('seedPlayers').addEventListener('click', async ()=>{
+  const list = [
+    // base 80
+    ["Durai",80],["Selvakumar K",80],["Chaitanya",80],["Wilson",80],["Nishchal",80],
+    ["Parthiban",80],["Vikas Ladkat",80],["Bala SG",80],["Muni Selva",80],["Bala asokan",80],
+    ["Mohanraj Subramaniam",80],["Britto Mariadoss",80],["Sriram",80],["Britto A",80],
+    ["Vivek A K",80],["Sathish",80],["Pavan",80],["Maruthi",80],
+    // base 90
+    ["Santosh NY",90],["Sudhan",90],["Pandi",90],["Dileep",90],["AA the Boss",90],
+    ["DD",90],["Tamilarasan M",90],["S R Balaji Sha",90],["Yuvaraj",90],["Jitesh",90],["Sangmesh",90],
+    // base 100
+    ["Subbi",100]
+  ];
+  const updates = {};
+  list.forEach(([name,base])=>{
+    const id = uid('player'); updates[id] = {id,name,base};
+  });
+  await refPlayers.update(updates);
+  alert("Players seeded!");
+});
+
+/*** New admin controls ***/
+// Set same budget for all teams
+document.getElementById('applyBudgetAll').addEventListener('click', async ()=>{
+  const val = Number(document.getElementById('globalBudget').value);
+  if (!isFinite(val) || val < 0) return alert('Enter a valid non-negative number.');
+  const updates = {};
+  Object.values(TEAMS || {}).forEach(t => {
+    updates[`${t.id}/budget`] = val;
+  });
+  await refTeams.update(updates);
+  alert(`Budget set to ${val} for all teams.`);
+});
+
+// Start auction
+document.getElementById('startAuction').addEventListener('click', async ()=>{
+  if (!Object.keys(TEAMS||{}).length) return alert('Add teams first.');
+  if (!Object.keys(PLAYERS||{}).length) return alert('Add players first.');
+  await refState.update({ started: true, startedAt: Date.now() });
+  alert('Auction started!');
+});
+
+// Reset auction (keeps teams/captains/players; clears non-captain picks, bids, and on-block)
+document.getElementById('resetAuction').addEventListener('click', async ()=>{
+  if (!confirm('Reset auction? This removes all SOLD picks (except captains), clears bids, and empties the current block. Teams and players remain.')) return;
+
+  // 1) Remove all non-captain picks + unassign those players
+  const picks = (await refPicks.get()).val() || {};
+  const batchRemovals = [];
+  const unassignUpdates = {};
+  Object.values(picks).forEach(p => {
+    if (!p.isCaptain) {
+      batchRemovals.push(refPicks.child(p.id).remove());
+      unassignUpdates[`${p.playerId}/assignedTeamId`] = null;
+    }
+  });
+
+  // 2) Clear all bids
+  const bidsRemoval = refBids.remove();
+
+  // 3) Clear on-block + skipped + started flag
+  const stateUpdate = refState.update({ onBlockPlayerId: null, skipped: [], started: false, startedAt: null });
+
+  // 4) Apply unassignments
+  const playerUnassign = Object.keys(unassignUpdates).length ? refPlayers.update(unassignUpdates) : Promise.resolve();
+
+  await Promise.all([...batchRemovals, bidsRemoval, stateUpdate, playerUnassign]);
+  alert('Auction reset. Captains kept, teams & players unchanged.');
+});
+</script>
+</body>
+</html>

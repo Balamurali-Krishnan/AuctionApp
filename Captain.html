@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Volleyball Auction — Captain</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Inter,Arial;margin:0;background:#0b1220;color:#fff}
+  .wrap{max-width:520px;margin:0 auto;padding:18px}
+  h1{font-size:18px;margin:0 0 12px}
+  .card{background:#0f172a;border:1px solid #172554;border-radius:12px;padding:14px;margin:10px 0}
+  input,select{width:100%;padding:12px;border-radius:10px;border:1px solid #1f2a44;background:#0b1220;color:#fff}
+  .btn{width:100%;border:0;border-radius:10px;padding:12px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+  .mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,Consolas,monospace}
+  .muted{color:#9aa4c7}
+  .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#1f2a44;color:#cbd5ff;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Captain — Place Bid</h1>
+
+  <div id="teamCard" class="card">
+    <label>Your Team</label>
+    <select id="teamSelect"></select>
+    <div id="teamInfo" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card" id="lockNotice" style="display:none">
+    <div class="badge">Locked</div>
+    <div style="margin-top:6px">This device is locked to <strong id="lockedTeamName"></strong>. Use only this link for your team.</div>
+  </div>
+
+  <div class="card">
+    <div class="muted">On the block:</div>
+    <div id="onBlock" style="font-size:22px;font-weight:800;margin-top:4px">—</div>
+    <div id="onBlockBase" class="muted">Base: —</div>
+    <div id="auctionStatus" class="muted" style="margin-top:4px"></div>
+  </div>
+
+  <div class="card">
+    <label>Your bid (points)</label>
+    <input id="bidAmount" type="number" min="0" inputmode="numeric" placeholder="Enter amount" />
+    <button class="btn" id="placeBid" style="margin-top:10px">Submit Bid</button>
+    <div id="hint" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <div class="muted">Top bids (info only)</div>
+    <div id="bidList" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+/*** Firebase ***/
+const firebaseConfig = /* TODO: paste your Firebase config here */ {
+  apiKey: "AIzaSyDE5edXDB9w84NcL8Fda3f8onf3CQbCHkA",
+  authDomain: "mylearning-bk.firebaseapp.com",
+  databaseURL: "https://mylearning-bk-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "mylearning-bk",
+  storageBucket: "mylearning-bk.firebasestorage.app",
+  messagingSenderId: "970255821782",
+  appId: "1:970255821782:web:5abe761ac13159043cd277"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const refTeams = db.ref('teams'), refPlayers = db.ref('players'),
+      refPicks = db.ref('picks'), refState = db.ref('state'), refBids = db.ref('bids');
+
+/*** Team locking from URL ***/
+function getParam(name){
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+}
+const LOCK_TEAM_ID = getParam('team'); // e.g. .../captain.html?team=team_abcd1234
+
+/*** State ***/
+let TEAMS={}, PICKS={}, STATE={onBlockPlayerId:null,started:false,startedAt:null}, PLAYERS={};
+const ROSTER_SIZE=6;
+const fmt = new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
+const fmtTime = (ts)=>new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+const el = id=>document.getElementById(id);
+
+refTeams.on('value', s=>{TEAMS=s.val()||{}; renderTeams(); updateHint(); applyLockUI();});
+refPicks.on('value', s=>{PICKS=s.val()||{}; renderTeams(); updateHint(); renderBidList();});
+refPlayers.on('value', s=>{PLAYERS=s.val()||{}; renderOnBlock(); renderBidList(); updateHint();});
+refState.on('value', s=>{
+  STATE=Object.assign({onBlockPlayerId:null,started:false,startedAt:null},s.val()||{});
+  renderOnBlock(); updateHint(); renderBidList();
+  el('auctionStatus').textContent = STATE.started ? 
+    `Auction started at ${STATE.startedAt ? new Date(STATE.startedAt).toLocaleTimeString() : ''}` :
+    `Waiting for admin to start...`;
+});
+
+/*** Team tools ***/
+function teamSpent(teamId){
+  return Object.values(PICKS||{}).filter(p=>p.teamId===teamId)
+    .reduce((a,p)=>a+(p.isCaptain?0:(+p.price||0)),0);
+}
+function teamCount(teamId){
+  return Object.values(PICKS||{}).filter(p=>p.teamId===teamId).length;
+}
+function renderTeams(){
+  const sel = el('teamSelect'); const prev = sel.value;
+  sel.innerHTML='';
+  Object.values(TEAMS).sort((a,b)=>a.name.localeCompare(b.name)).forEach(t=>{
+    const o=document.createElement('option'); o.value=t.id; o.textContent=t.name; sel.appendChild(o);
+  });
+  if(LOCK_TEAM_ID && TEAMS[LOCK_TEAM_ID]){ sel.value = LOCK_TEAM_ID; }
+  else if(prev){ sel.value=prev; }
+  updateTeamInfo();
+}
+el('teamSelect').addEventListener('change', ()=>{ if(LOCK_TEAM_ID){ el('teamSelect').value = LOCK_TEAM_ID; return; } updateTeamInfo(); updateHint(); renderBidList(); });
+function updateTeamInfo(){
+  const t = TEAMS[el('teamSelect').value]; if(!t){el('teamInfo').textContent=''; return;}
+  const spent = teamSpent(t.id); const remaining = Math.max(0,(+t.budget||0)-spent);
+  const count = teamCount(t.id);
+  el('teamInfo').textContent = `${t.name}: ${fmt.format(remaining)} left • ${ROSTER_SIZE-count} spot(s)`;
+}
+function applyLockUI(){
+  if(!LOCK_TEAM_ID) return;
+  const t = TEAMS[LOCK_TEAM_ID];
+  if(!t) return; // not loaded yet
+  // Hide selector and show lock notice
+  el('teamCard').style.display = 'none';
+  const notice = document.getElementById('lockNotice');
+  notice.style.display = 'block';
+  document.getElementById('lockedTeamName').textContent = t.name;
+}
+
+/*** On block ***/
+function renderOnBlock(){
+  const pid = STATE?.onBlockPlayerId;
+  const p = pid ? PLAYERS[pid] : null;
+  el('onBlock').textContent = p ? p.name : '—';
+  el('onBlockBase').textContent = p ? `Base: ${fmt.format(p.base||0)}` : 'Base: —';
+}
+
+/*** Reserve rule (same as admin) ***/
+function unassignedPlayersList(excludeId){
+  return Object.values(PLAYERS || {}).filter(pl => {
+    if (excludeId && pl.id === excludeId) return false;
+    const assignedFlag = !!(pl.assignedTeamId && pl.assignedTeamId !== '');
+    const pickedFlag = Object.values(PICKS || {}).some(pk => pk.playerId === pl.id);
+    return !(assignedFlag || pickedFlag);
+  });
+}
+function requiredReserveForTeam(teamId, excludePlayerId){
+  const slotsLeftNow   = ROSTER_SIZE - teamCount(teamId);
+  const slotsLeftAfter = Math.max(0, slotsLeftNow - 1);
+  if (slotsLeftAfter === 0) return 0;
+  const bases = unassignedPlayersList(excludePlayerId)
+    .map(p => +p.base || 0)
+    .sort((a,b)=>a-b);
+  let reserve = 0;
+  for (let i=0; i<Math.min(slotsLeftAfter, bases.length); i++) reserve += bases[i];
+  return reserve;
+}
+function maxAllowedBidForTeam(teamId, currentPlayerId){
+  const t = TEAMS[teamId]; if(!t) return 0;
+  const spent = teamSpent(t.id);
+  const remaining = Math.max(0,(+t.budget||0)-spent);
+  const reserve = requiredReserveForTeam(teamId, currentPlayerId);
+  return Math.max(0, remaining - reserve);
+}
+
+/*** Bid hint (shows Max bid) ***/
+function updateHint(){
+  const tId = LOCK_TEAM_ID || el('teamSelect').value;
+  const t = TEAMS[tId];
+  const pid = STATE?.onBlockPlayerId;
+  const p = pid ? PLAYERS[pid] : null;
+  if(!t || !p){ el('hint').textContent=''; return; }
+  const spent = teamSpent(t.id);
+  const remaining = Math.max(0,(+t.budget||0)-spent);
+  const count = teamCount(t.id);
+  const base = +p.base || 0;
+  const maxBid = maxAllowedBidForTeam(t.id, pid);
+  el('hint').textContent =
+    `${t.name}: ${fmt.format(remaining)} left • ${ROSTER_SIZE-count} spot(s) • Base ${fmt.format(base)} • Max bid ${fmt.format(maxBid)}`;
+}
+
+/*** Place bid ***/
+el('placeBid').addEventListener('click', async ()=>{
+  if(!STATE.started) return alert('Auction not started yet. Wait for admin.');
+  const tId = LOCK_TEAM_ID || el('teamSelect').value;
+  const t = TEAMS[tId];
+  if(!t) return alert('Team not found. Use the correct link from admin.');
+  const pid = STATE.onBlockPlayerId;
+  if(!pid) return alert('No player on the block yet.');
+  const p = PLAYERS[pid];
+  const base = +p.base || 0;
+  const amt = +el('bidAmount').value;
+  if(!amt || amt < base) return alert(`Bid must be ≥ base (${base}).`);
+  const spent = teamSpent(t.id);
+  const remaining = (+t.budget||0)-spent;
+  const count = teamCount(t.id);
+  if(count >= ROSTER_SIZE) return alert('Your roster is full.');
+  const maxBid = maxAllowedBidForTeam(t.id, pid);
+  if(amt > maxBid) return alert(`You must reserve points for remaining slots. Max bid: ${fmt.format(maxBid)}.`);
+  if(amt > remaining) return alert(`You only have ${remaining} left.`);
+  const bid = { amount: amt, ts: Date.now() };
+  await refBids.child(pid).child(tId).set(bid);
+  el('bidAmount').value='';
+  updateHint();
+});
+
+/*** Live bid list ***/
+function renderBidList(){
+  const div = el('bidList'); div.innerHTML = '';
+  const pid = STATE.onBlockPlayerId;
+  if(!pid){ div.innerHTML = '<div class="muted">No player on block.</div>'; return; }
+  refBids.child(pid).off();
+  refBids.child(pid).on('value', s=>{
+    const bids = Object.entries(s.val()||{}).map(([teamId,b])=>({teamId,...b}))
+      .sort((a,b)=>b.amount-a.amount||a.ts-b.ts);
+    if(!bids.length){ div.innerHTML='<div class="muted">No bids yet.</div>'; return; }
+    const list=document.createElement('div');
+    bids.forEach((b,i)=>{
+      const t=TEAMS[b.teamId]; const top=i===0?'style="font-weight:700"':'';
+      const row=document.createElement('div');
+      row.innerHTML=`<div ${top}>${t?.name||b.teamId}: <span class="mono">${fmt.format(b.amount)}</span> <span class="muted">(${fmtTime(b.ts)})</span></div>`;
+      list.appendChild(row);
+    });
+    div.innerHTML=''; div.appendChild(list);
+  });
+}
+</script>
+</body>
+</html>
